@@ -1,0 +1,139 @@
+<html>
+
+<head>
+    <script src="https://cdn.jsdelivr.net/npm/underscore@1.13.1/underscore-umd-min.js"></script>
+    <script src="https://unpkg.com/file-saver@2.0.5/dist/FileSaver.min.js"></script>
+</head>
+
+<body>
+    <p>
+        Use this as Network filter:
+    <pre>/dm_video.*m3u8\?tag=1/</pre> and then put the link address below to process and download the video.
+    </p>
+    <div>
+        <input id="url" type="text" value="" placeholder="https://...etc...m3u8" />
+        <button id="button">Process input</button>
+        <button id="buttonm3u8_internet" disabled>Download internet m3u8 playlist</button>
+        <button id="buttonm3u8_local" disabled>Download local m3u8 playlist and ts files</button>
+    </div>
+</body>
+<script>
+
+    // Elements
+    var button = document.getElementById("button");
+    var urlElement = document.getElementById("url");
+    var buttonm3u8_internet = document.getElementById("buttonm3u8_internet");
+
+    function httpGetAsync(theUrl, callback) {
+        var xmlHttp = new XMLHttpRequest();
+        xmlHttp.onreadystatechange = function () {
+            if (xmlHttp.readyState == 4 && xmlHttp.status == 200)
+                callback(xmlHttp.responseText);
+        }
+        xmlHttp.open("GET", theUrl, true);
+        xmlHttp.send(null);
+    }
+
+    function getM3U8Async(url, callback) {
+        console.log(url);
+        httpGetAsync(url, (content) => {
+            var list = content.split(/\r?\n/g);
+            var meta = [];
+            var best = { pix: -1 };
+            _.each(list, (v, i) => {
+                if (/^\s*$/.test(v)) {
+                } else if (/^(#EXTINF|#EXT-X-STREAM-INF).*/.test(v)) {
+                    // console.log("extinf", v);
+                    meta.push(v);
+                } else if (/^#.*/.test(v)) {
+                    // console.log("dunno", v);
+                } else {
+                    // URL
+                    try {
+                        console.log("url", v, meta);
+                        var bw = _.find(_.map(meta, (x) => {
+                            var m = /\WBANDWIDTH=(\d+)/.exec(x);
+                            return m ? m[1] - 0 : null;
+                        })) || 0;
+                        var res = _.find(_.map(meta, (x) => {
+                            var m = /\WRESOLUTION=([^,]+)/.exec(x);
+                            return m ? m[1] : null;
+                        })) || null;
+                        var pix = 1;
+                        if (res) {
+                            var res2 = _.map(res.split(/[xX]/), (z) => z - 0);
+                            pix = res2[0] * res2[1];
+                        }
+                        if (pix > best.pix) {
+                            best = { url: v, bw: bw, res: res, pix: pix };
+                        }
+                    } finally {
+                        meta = [];
+                    }
+
+                }
+            });
+            console.log("best", best);
+            var url2 = new URL(best.url, url).href;
+            console.log("best url", url2);
+            httpGetAsync(url2, callback);
+        });
+    }
+
+    function readyToDownloadM3u8(internet, local, tsFiles) {
+        window.__m3u8_internet = internet;
+        window.__m3u8_local = local;
+        window.__tsFiles = tsFiles;
+        buttonm3u8_internet.disabled = false;
+        buttonm3u8_local.disabled = false;
+    }
+
+    // Events
+    button.addEventListener('click', (button) => {
+        var url = urlElement.value;
+        getM3U8Async(url, content => {
+            console.log("m3u8 content", content);
+            var list = content.split(/\r?\n/g);
+            var content2 = "";
+            var content3 = "";
+            var tsFiles = [];
+            _.each(list, (v, i) => {
+                if (/^\s*$/.test(v)) {
+                    if (i < list.length - 1) { // IDK
+                        content2 += v + "\r\n";
+                        content3 += v + "\r\n";
+                    }
+                } else if (/^#.*/.test(v)) { // Comment/Extension
+                    content2 += v + "\r\n";
+                    content3 += v + "\r\n";
+                } else {
+                    // URL
+                    var url2 = new URL(v, url).href;
+                    var fileName = _.last(new URL(v, url).pathname.split("/"));
+                    // console.log("url", v, url2);
+                    content2 += url2 + "\r\n";
+                    content3 += fileName + "\r\n";
+                    tsFiles.push({ fileName: fileName, url: url2 });
+                }
+            });
+            readyToDownloadM3u8(content2, content3, tsFiles);
+        });
+    });
+
+    buttonm3u8_internet.addEventListener('click', (buttonm3u8_internet) => {
+        var blob = new Blob([window.__m3u8_internet], { type: "text/plain;charset=utf-8" });
+        window.saveAs(blob, "playlist_internet.m3u8");
+    });
+
+    buttonm3u8_local.addEventListener('click', (buttonm3u8_local) => {
+        _.each(window.__tsFiles, f => {
+            window.saveAs(f.url, f.fileName);
+        });
+        var blob0 = new Blob([window.__m3u8_local], { type: "text/plain;charset=utf-8" });
+        window.saveAs(blob0, "playlist_local.m3u8");
+    });
+
+    button.click(); // FIXME quitar
+</script>
+
+</html>
