@@ -1,36 +1,71 @@
 <html>
 
 <head>
+    <title>Download video stream</title>
     <script src="https://cdn.jsdelivr.net/npm/underscore@1.13.1/underscore-umd-min.js"></script>
     <script src="https://unpkg.com/file-saver@2.0.5/dist/FileSaver.min.js"></script>
 </head>
 
 <body>
+    <h1>Download video stream</h1>
+    <h3>Basic instructions</h3>
     <p>
-        Use this as Network filter:
-    <pre>/dm_video.*m3u8\?tag=1/</pre> and then put the link address below to process and download the video.
+        In chrome dev tools network tab use this as filter:
+    <pre>/dm_video.*m3u8\?tag=1/</pre>
+    and then and then play the video. An m3u8 file will be shown. Copy the link address and paste it below to process
+    and download the video.
     </p>
-    <div>
-        <input id="url" type="text" value="" placeholder="https://...etc...m3u8" />
-        <button id="button">Process input</button>
-        <button id="buttonm3u8_internet" disabled>Download internet m3u8 playlist</button>
-        <button id="buttonm3u8_local" disabled>Download local m3u8 playlist and ts files</button>
+    <p>
+        All the download buttons are independent alternatives. You only need one. They play better in VLC media player
+        and you can use it to convert the video to other formats.
+    </p>
+    <h3>Controls</h3>
+    <div id="controls">
+        <div id="input">
+            <label>m3u8 video URL</label>
+            <input id="url" type="text" value="" placeholder="https://...etc...m3u8" />
+            <button id="button">Process input</button>
+        </div>
+        <div id="download">
+            <button id="buttonm3u8_internet" disabled>Download internet m3u8 playlist</button>
+            <button id="buttonm3u8_local" disabled>Download local m3u8 playlist and ts files</button>
+            <button id="buttonm3u8_single_ts" disabled>Download single ts file</button>
+        </div>
     </div>
+    <h3>Getting a normal video file</h3>
+    <p>Internet m3u8 file is a playlist referencing the video fragments online. With it you don't really have the video.
+    </p>
+    <p>Local m3u8 file is a local playlist and it is downloaded along with the fragments so you really have them.</p>
+    <p>Single ts file is just the fragments sticked together with no processing beyond that.
+        The video has small cuts due to extra packets (like headers) not removed when joining the fragments. You can use
+        ffmpeg or VLC to change format without altering the stream.
+    <pre>ffmpeg -i video.ts -vcodec copy -acodec copy -bsf:a aac_adtstoasc video_out.mp4</pre>
+    </p>
 </body>
 <script>
 
     // Elements
-    var button = document.getElementById("button");
     var urlElement = document.getElementById("url");
+    var button = document.getElementById("button");
     var buttonm3u8_internet = document.getElementById("buttonm3u8_internet");
+    var buttonm3u8_local = document.getElementById("buttonm3u8_local");
+    var buttonm3u8_single_ts = document.getElementById("buttonm3u8_single_ts");
 
-    function httpGetAsync(theUrl, callback) {
+    function httpGetAsync(theUrl, callback, blob = false) {
         var xmlHttp = new XMLHttpRequest();
         xmlHttp.onreadystatechange = function () {
-            if (xmlHttp.readyState == 4 && xmlHttp.status == 200)
-                callback(xmlHttp.responseText);
+            if (xmlHttp.readyState == 4 && xmlHttp.status == 200) {
+                if (blob) {
+                    callback(xmlHttp.response);
+                } else {
+                    callback(xmlHttp.responseText);
+                }
+            }
         }
         xmlHttp.open("GET", theUrl, true);
+        if (blob) {
+            xmlHttp.responseType = "blob";
+        }
         xmlHttp.send(null);
     }
 
@@ -80,13 +115,21 @@
         });
     }
 
-    function readyToDownloadM3u8(internet, local, tsFiles) {
+    function readyToDownload(internet, local, tsFiles) {
         window.__m3u8_internet = internet;
         window.__m3u8_local = local;
         window.__tsFiles = tsFiles;
         buttonm3u8_internet.disabled = false;
         buttonm3u8_local.disabled = false;
+        buttonm3u8_single_ts.disabled = false;
     }
+
+    function disableDownload(internet, local, tsFiles) {
+        buttonm3u8_internet.disabled = true;
+        buttonm3u8_local.disabled = true;
+        buttonm3u8_single_ts.disabled = true;
+    }
+
 
     // Events
     button.addEventListener('click', (button) => {
@@ -116,21 +159,46 @@
                     tsFiles.push({ fileName: fileName, url: url2 });
                 }
             });
-            readyToDownloadM3u8(content2, content3, tsFiles);
+            readyToDownload(content2, content3, tsFiles);
         });
     });
 
-    buttonm3u8_internet.addEventListener('click', (buttonm3u8_internet) => {
+    buttonm3u8_internet.addEventListener('click', (x) => {
         var blob = new Blob([window.__m3u8_internet], { type: "text/plain;charset=utf-8" });
         window.saveAs(blob, "playlist_internet.m3u8");
     });
 
-    buttonm3u8_local.addEventListener('click', (buttonm3u8_local) => {
+    buttonm3u8_local.addEventListener('click', (x) => {
         _.each(window.__tsFiles, f => {
             window.saveAs(f.url, f.fileName);
         });
         var blob0 = new Blob([window.__m3u8_local], { type: "text/plain;charset=utf-8" });
         window.saveAs(blob0, "playlist_local.m3u8");
+    });
+
+    buttonm3u8_single_ts.addEventListener('click', (x) => {
+        var data = [];
+        var urls = _.map(window.__tsFiles, f => f.url);
+        var extension = (_.find(window.__tsFiles)?.fileName?.match(/([.][^.]+)$/) || ['', '.mpg'])[1];
+        function r() {
+            if (urls.length == 0) {
+                var b = new Blob(data, { type: 'application/octet-binary' });
+                console.log("All data downloaded", data.length, b.size);
+                window.saveAs(b, "video" + extension);
+            } else {
+                httpGetAsync(urls.shift(), c => {
+                    console.log(".");
+                    data.push(c);
+                    r();
+                }, blob = true);
+            }
+        }
+        r();
+    });
+
+    urlElement.addEventListener('focus', (x) => {
+        urlElement.select();
+        disableDownload();
     });
 
     button.click(); // FIXME quitar
