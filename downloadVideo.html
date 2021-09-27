@@ -3,6 +3,13 @@
 
 <head>
     <title>Download video stream</title>
+    <link rel="stylesheet" href="https://unpkg.com/@picocss/pico@latest/css/pico.min.css">
+    <style>
+        button {
+            display: inline-block;
+            width: auto;
+        }
+    </style>
 </head>
 
 <body>
@@ -14,7 +21,7 @@
     <h3>Basic instructions</h3>
     <p>
         In chrome dev tools network tab use this as filter:
-    <pre>/dm_video.*m3u8\?tag=1/</pre>
+    <pre>/.*m3u8\?tag=/</pre>
     and then and then play the video. An m3u8 file will be shown. Copy the link address and paste it below to process
     and download the video.
     </p>
@@ -25,15 +32,18 @@
     <h3>Controls</h3>
     <div id="controls">
         <div id="input">
-            <label>m3u8 video URL</label>
-            <input id="url" type="text" value="" placeholder="https://...etc...m3u8" />
-            <button id="button">Process input</button>
+            <label>
+                m3u8 video URL
+                <input id="url" type="text" value="" placeholder="https://...etc...m3u8" />
+            </label>
+            <button href="#" role="button" id="button">Process input</button>
         </div>
         <div id="download">
-            <button id="buttonvideo_mp4_download" disabled>Recode video as mp4</button>
-            <button id="buttonm3u8_internet" disabled>Download internet m3u8 playlist</button>
-            <button id="buttonm3u8_local" disabled>Download local m3u8 playlist and ts files</button>
-            <button id="buttonvideo_single_glued" disabled>Download single glued file</button>
+            <button href="#" role="button" id="buttonvideo_mp4_download" disabled>Recode video as mp4</button>
+            <button href="#" role="button" id="buttonm3u8_internet" disabled>Download internet m3u8 playlist</button>
+            <button href="#" role="button" id="buttonm3u8_local" disabled>Download local m3u8 playlist and ts
+                files</button>
+            <button href="#" role="button" id="buttonvideo_single_glued" disabled>Download single glued file</button>
         </div>
     </div>
     <h3>Getting a video file</h3>
@@ -47,11 +57,13 @@
                 alternative.</p>
         </li>
         <li>
-            <p>Internet m3u8 playlist file is a playlist referencing the video fragments online. With it you don't really have
+            <p>Internet m3u8 playlist file is a playlist referencing the video fragments online. With it you don't
+                really have
                 the video but you can play it or "convert" it to mp4 with VLC.</p>
         </li>
         <li>
-            <p>Local m3u8 playlist file is a local playlist along with it's video fragments so you really have them beside the
+            <p>Local m3u8 playlist file is a local playlist along with it's video fragments so you really have them
+                beside the
                 playlist. This works with VLC and ffmpeg.</p>
         </li>
         <li>
@@ -137,7 +149,7 @@
                             var m = /\WRESOLUTION=([^,]+)/.exec(x);
                             return m ? m[1] : null;
                         })) || null;
-                        var pix = 1;
+                        var pix = 0;
                         if (res) {
                             var res2 = _.map(res.split(/[xX]/), (z) => z - 0);
                             pix = res2[0] * res2[1];
@@ -152,9 +164,13 @@
                 }
             });
             console.log("best", best);
-            var url2 = new URL(best.url, url).href;
-            console.log("best url", url2);
-            httpGetAsync(url2, callback);
+            if (best.pix <= 0) {
+                callback(content);
+            } else {
+                var url2 = new URL(best.url, url).href;
+                console.log("best url", url2);
+                httpGetAsync(url2, callback);
+            }
         });
     }
 
